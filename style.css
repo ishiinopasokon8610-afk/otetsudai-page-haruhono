@@ -1,0 +1,248 @@
+/* 全体のデザイン */
+body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    background-color: #f5f7fa;
+    color: #333;
+    min-height: 100vh;
+}
+
+/* ユーザー切り替えボタンのデザイン */
+.user-switcher {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px dashed #ddd;
+}
+.user-switcher button {
+    background-color: white;
+    border: 2px solid #bdc3c7;
+    color: #7f8c8d;
+    font-size: 1.1em;
+    padding: 10px 25px;
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-top: 0;
+}
+/* ほのかちゃん選択時の色 */
+.active-user-honoka {
+    background-color: #ffecd2 !important;
+    border-color: #e67e22 !important;
+    color: #d35400 !important;
+}
+/* はると君選択時の色 */
+.active-user-haruto {
+    background-color: #d6eaf8 !important;
+    border-color: #3498db !important;
+    color: #2980b9 !important;
+}
+
+/* 左メニューのデザイン (PC用) */
+#sidebar {
+    width: 250px;
+    background-color: #ffecd2;
+    padding: 20px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: background-color 0.3s;
+}
+#sidebar h2 {
+    font-size: 1.2em;
+    color: #d35400;
+    border-bottom: 2px solid #d35400;
+    padding-bottom: 5px;
+}
+#sidebar ul {
+    list-style: none;
+    padding: 0;
+}
+#sidebar ul li {
+    margin-bottom: 10px;
+}
+#sidebar ul li a {
+    text-decoration: none;
+    color: #333;
+    font-weight: bold;
+    display: block;
+    padding: 10px;
+    border-radius: 5px;
+    transition: background 0.2s;
+    background-color: white;
+    border: 1px solid #fbd2b9;
+}
+#sidebar ul li a:hover, #sidebar ul li a.active-link {
+    background-color: #fcb69f;
+    color: white;
+    border-color: #fcb69f;
+}
+.month-summary {
+    font-size: 0.9em;
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 5px;
+    border-left: 4px solid #d35400;
+}
+
+/* メイン画面のデザイン */
+#main-content {
+    flex-grow: 1;
+    padding: 20px 30px;
+    background-color: #ffffff;
+    overflow-y: auto;
+}
+h1 {
+    color: #e67e22;
+    text-align: center;
+    margin-top: 0;
+    transition: color 0.3s;
+}
+.page {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+.active-page {
+    display: block;
+}
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* 表デザイン */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    background-color: white;
+}
+th, td {
+    border: 1px solid #bdc3c7;
+    padding: 12px;
+    text-align: center;
+}
+th {
+    background-color: #ffeaa7;
+    color: #333;
+}
+td {
+    background-color: #fafafa;
+}
+
+/* カレンダー特有のデザイン */
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8f9fa;
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+}
+.calendar-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.5em;
+}
+.calendar-table th {
+    background-color: #f1f2f6;
+}
+.calendar-table th:first-child { color: red; } /* 日曜日 */
+.calendar-table th:last-child { color: blue; } /* 土曜日 */
+.calendar-table td {
+    height: 80px;
+    vertical-align: top;
+    padding: 5px;
+    width: 14%;
+}
+.day-number {
+    font-weight: bold;
+    text-align: left;
+    font-size: 0.9em;
+}
+.day-money {
+    color: #e67e22;
+    font-weight: bold;
+    font-size: 1em;
+    margin-top: 5px;
+    background-color: #fff3e0;
+    border-radius: 4px;
+    padding: 2px 0;
+}
+
+/* ボタン・入力欄のデザイン */
+button {
+    background-color: #e67e22;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 1em;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: bold;
+}
+button:hover { background-color: #d35400; }
+.btn-red { background-color: #e74c3c; }
+.btn-red:hover { background-color: #c0392b; }
+.btn-blue { background-color: #3498db; }
+.btn-blue:hover { background-color: #2980b9; }
+input[type="text"], input[type="number"], input[type="date"], select, textarea {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+    width: 90%;
+    max-width: 400px;
+}
+textarea { height: 100px; resize: vertical; }
+.section-box {
+    background-color: #fdfbfb;
+    padding: 20px;
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+/* 📱 スマホ・タブレット用デザイン */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column;
+    }
+    #sidebar {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+    }
+    #sidebar h2, #sidebar-month-list {
+        display: none; 
+    }
+    #sidebar ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    #sidebar ul li {
+        margin-bottom: 0;
+        flex: 1 1 48%;
+    }
+    #sidebar ul li a {
+        padding: 12px 5px;
+        text-align: center;
+        font-size: 0.9em;
+    }
+    #main-content {
+        padding: 10px;
+    }
+    th, td {
+        padding: 5px;
+        font-size: 0.9em;
+    }
+    .calendar-header h3 { font-size: 1.2em; }
+    .calendar-table td { height: 60px; }
+    .day-money { font-size: 0.8em; }
+}
