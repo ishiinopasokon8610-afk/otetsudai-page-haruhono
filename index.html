@@ -36,6 +36,7 @@
         </div>
 
         <h1 id="main-title">🌸 ほのか のお手伝い記録帳</h1>
+        <p id="sync-status" style="text-align:center; margin-top:-10px; font-size:0.85em; color:gray;">🔄 接続中...</p>
 
         <!-- 1. ホーム画面 -->
         <div id="page-home" class="page active-page">
@@ -126,20 +127,15 @@
                 <button class="btn-red" onclick="resetAllData()">🗑️ すべての記録をリセットする</button>
             </div>
 
-            <div class="section-box">
-                <h3>📱 スマホ・PC間のデータ引き継ぎ</h3>
-                <p>2人分のデータをまとめて他の端末に移せます。</p>
-                
-                <p><b>【送る】今使っている端末のデータを出力</b></p>
-                <button class="btn-blue" onclick="exportData()">📤 データを出力・コピーする</button>
-                
-                <p style="margin-top: 20px;"><b>【受け取る】他の端末からのデータを取り込む</b></p>
-                <textarea id="data-text" placeholder="ここに、別の端末でコピーしたデータを貼り付けてください"></textarea><br>
-                <button class="btn-blue" onclick="importData()">📥 貼り付けたデータを取り込む</button>
-            </div>
         </div>
 
     </div>
+
+    <!-- 🔥 Firebase SDK（複数端末での同期用） -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-database-compat.js"></script>
+    <!-- 自分のFirebase接続情報（firebase-config.jsに貼り付けてください） -->
+    <script src="firebase-config.js"></script>
 
     <!-- JavaScriptファイルを読み込む -->
     <script src="script.js"></script>

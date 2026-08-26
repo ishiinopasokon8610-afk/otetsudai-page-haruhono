@@ -6,6 +6,12 @@ let records = {};
 let currentCalYear = new Date().getFullYear();
 let currentCalMonth = new Date().getMonth(); 
 
+// --- Firebase関連の変数 ---
+let db;
+let tasksRef = null;
+let recordsRef = null;
+let firebaseReady = false;
+
 window.onload = function() {
     let today = new Date();
     let yyyy = today.getFullYear();
@@ -13,25 +19,168 @@ window.onload = function() {
     let dd = String(today.getDate()).padStart(2, '0');
     document.getElementById('record-date').value = `${yyyy}-${mm}-${dd}`;
 
+    initFirebase();
+    migrateLocalStorageIfNeeded();
+
     // 初期設定としてほのかちゃんのデータを読み込む
     switchUser('honoka');
     showPage('home'); 
 };
 
 // ==========================================
+// ▼ 📦 昔のlocalStorageデータをクラウドへ「追加」する引っ越し処理 ▼
+// ==========================================
+// ※上書きではなく「クラウドにまだ無いものだけ足す」ので、
+//   古い端末のデータが消えてしまうことはありません。
+//   一度成功したら二度と実行しないよう、フラグを立てます。
+const MIGRATION_FLAG_KEY = 'firebase_migration_done_v1';
+
+function migrateLocalStorageIfNeeded() {
+    if (!firebaseReady) return;
+    if (localStorage.getItem(MIGRATION_FLAG_KEY)) return; // すでに引っ越し済み
+
+    let users = ['honoka', 'haruto'];
+    Promise.all(users.map(userId => migrateUserData(userId)))
+        .then(() => {
+            localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
+            console.log('ローカルの古いデータをクラウドへ引き継ぎました');
+        })
+        .catch((e) => {
+            console.error('データ引き継ぎでエラー:', e);
+            // 失敗した場合は次回また試せるようフラグは立てない
+        });
+}
+
+function migrateUserData(userId) {
+    let localTasks = JSON.parse(localStorage.getItem(userId + '_tasks')) || [];
+    let localRecords = JSON.parse(localStorage.getItem(userId + '_records')) || {};
+
+    // この端末に古いデータが無ければ何もしない
+    if (localTasks.length === 0 && Object.keys(localRecords).length === 0) {
+        return Promise.resolve();
+    }
+
+    return db.ref(userId).once('value').then((snapshot) => {
+        let cloudData = snapshot.val() || {};
+        let cloudTasks = cloudData.tasks || [];
+        let cloudRecords = cloudData.records || {};
+
+        // --- タスクをマージ（クラウドに無いidだけ追加） ---
+        let cloudTaskIds = new Set(cloudTasks.map(t => t.id));
+        let mergedTasks = cloudTasks.slice();
+        localTasks.forEach((t) => {
+            if (!cloudTaskIds.has(t.id)) {
+                mergedTasks.push(t);
+                cloudTaskIds.add(t.id);
+            }
+        });
+
+        // --- 記録をマージ（日付ごと・お手伝いごとに、クラウドに無いものだけ追加） ---
+        let mergedRecords = {};
+        for (let date in cloudRecords) {
+            mergedRecords[date] = cloudRecords[date].slice();
+        }
+        for (let date in localRecords) {
+            if (!mergedRecords[date]) {
+                mergedRecords[date] = localRecords[date].slice();
+            } else {
+                let existingTaskIds = new Set(mergedRecords[date].map(r => r.taskId));
+                localRecords[date].forEach((r) => {
+                    if (!existingTaskIds.has(r.taskId)) {
+                        mergedRecords[date].push(r);
+                        existingTaskIds.add(r.taskId);
+                    }
+                });
+            }
+        }
+
+        return db.ref(userId).set({
+            tasks: mergedTasks,
+            records: mergedRecords
+        });
+    });
+}
+
+// ==========================================
+// ▼ 🔥 Firebase 初期化・同期機能 ▼
+// ==========================================
+function initFirebase() {
+    let statusEl = document.getElementById('sync-status');
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        firebaseReady = true;
+
+        // 接続状態の表示（他の端末との同期が生きているか分かるように）
+        db.ref('.info/connected').on('value', (snap) => {
+            if (!statusEl) return;
+            if (snap.val() === true) {
+                statusEl.innerText = '🟢 同期中（他の端末と繋がっています）';
+                statusEl.style.color = 'green';
+            } else {
+                statusEl.innerText = '🔴 未接続（この端末だけの表示です）';
+                statusEl.style.color = 'red';
+            }
+        });
+    } catch (e) {
+        firebaseReady = false;
+        if (statusEl) {
+            statusEl.innerText = '⚠️ Firebaseに接続できません（firebase-config.jsを確認してください）';
+            statusEl.style.color = 'red';
+        }
+        console.error('Firebase init error:', e);
+    }
+}
+
+// ==========================================
 // ▼ 👥 ユーザー切り替え機能 ▼
 // ==========================================
 function loadUserData() {
-    tasks = JSON.parse(localStorage.getItem(currentUser + '_tasks')) || [];
-    records = JSON.parse(localStorage.getItem(currentUser + '_records')) || {};
+    // 前のユーザーの監視を止める（多重登録を防ぐ）
+    if (tasksRef) tasksRef.off();
+    if (recordsRef) recordsRef.off();
+
+    // 切替直後は前のユーザーのデータが一瞬映らないよう空にしておく
+    tasks = [];
+    records = {};
+
+    if (!firebaseReady) {
+        return;
+    }
+
+    tasksRef = db.ref(currentUser + '/tasks');
+    recordsRef = db.ref(currentUser + '/records');
+
+    // タスク一覧をリアルタイムで監視。他の端末が変更すると自動で反映される
+    tasksRef.on('value', (snapshot) => {
+        tasks = snapshot.val() || [];
+        updateTaskList();
+        loadTodayRecord();
+        updateSidebarMonthTotals();
+        if (document.getElementById('page-calendar').classList.contains('active-page')) {
+            drawCalendar();
+        }
+    });
+
+    // 記録をリアルタイムで監視
+    recordsRef.on('value', (snapshot) => {
+        records = snapshot.val() || {};
+        loadTodayRecord();
+        updateSidebarMonthTotals();
+        if (document.getElementById('page-calendar').classList.contains('active-page')) {
+            drawCalendar();
+        }
+    });
 }
 
 function saveTasksData() {
-    localStorage.setItem(currentUser + '_tasks', JSON.stringify(tasks));
+    if (!firebaseReady) return;
+    db.ref(currentUser + '/tasks').set(tasks);
 }
 
 function saveRecordsData() {
-    localStorage.setItem(currentUser + '_records', JSON.stringify(records));
+    if (!firebaseReady) return;
+    db.ref(currentUser + '/records').set(records);
 }
 
 function switchUser(userId) {
@@ -350,21 +499,22 @@ function updateSidebarMonthTotals() {
 // ▼ リセット・引き継ぎの機能 ▼
 // ==========================================
 function resetAllData() {
-    if (confirm("【警告】ほのかちゃんと、はると君の、すべての記録が消えます。\n本当にリセットしてもよろしいですか？")) {
+    if (confirm("【警告】ほのかちゃんと、はると君の、すべての記録が消えます。\n（すべての端末から消えます）\n本当にリセットしてもよろしいですか？")) {
         if (confirm("※消えたデータは二度と戻りません。\n本当に本当によろしいですか？")) {
-            localStorage.removeItem('honoka_tasks');
-            localStorage.removeItem('honoka_records');
-            localStorage.removeItem('haruto_tasks');
-            localStorage.removeItem('haruto_records');
-            
-            tasks = [];
-            records = {};
-            
-            updateTaskList();
-            loadTodayRecord();
-            updateSidebarMonthTotals();
-            if(document.getElementById('page-calendar').classList.contains('active-page')) {
-                drawCalendar();
+            if (firebaseReady) {
+                db.ref('honoka').remove();
+                db.ref('haruto').remove();
+                // ↑ 削除すると各端末のリアルタイム監視（on value）が反応して
+                //   自動的に画面が空の状態に更新されます
+            } else {
+                tasks = [];
+                records = {};
+                updateTaskList();
+                loadTodayRecord();
+                updateSidebarMonthTotals();
+                if (document.getElementById('page-calendar').classList.contains('active-page')) {
+                    drawCalendar();
+                }
             }
             
             alert("すべてのデータを完全にリセットしました。");
@@ -372,55 +522,3 @@ function resetAllData() {
     }
 }
 
-function exportData() {
-    let allData = { 
-        honoka_tasks: JSON.parse(localStorage.getItem('honoka_tasks')) || [],
-        honoka_records: JSON.parse(localStorage.getItem('honoka_records')) || {},
-        haruto_tasks: JSON.parse(localStorage.getItem('haruto_tasks')) || [],
-        haruto_records: JSON.parse(localStorage.getItem('haruto_records')) || {}
-    };
-    let dataString = btoa(unescape(encodeURIComponent(JSON.stringify(allData))));
-    let textArea = document.getElementById('data-text');
-    textArea.value = dataString;
-    textArea.select();
-    document.execCommand("copy");
-    alert("2人分のデータを出力してコピーしました！\nLINEやメールで別の端末に送ってください。");
-}
-
-function importData() {
-    let textArea = document.getElementById('data-text');
-    let dataString = textArea.value;
-    
-    if (dataString === "") {
-        alert("文字が入力されていません！");
-        return;
-    }
-
-    if (confirm("入力されたデータで上書きします。今の端末のデータは消えますがよろしいですか？")) {
-        try {
-            let decodedString = decodeURIComponent(escape(atob(dataString)));
-            let allData = JSON.parse(decodedString);
-            
-            if (allData.honoka_tasks) { 
-                localStorage.setItem('honoka_tasks', JSON.stringify(allData.honoka_tasks));
-                localStorage.setItem('honoka_records', JSON.stringify(allData.honoka_records || {}));
-                localStorage.setItem('haruto_tasks', JSON.stringify(allData.haruto_tasks || []));
-                localStorage.setItem('haruto_records', JSON.stringify(allData.haruto_records || {}));
-                
-                loadUserData();
-                
-                updateTaskList();
-                loadTodayRecord();
-                updateSidebarMonthTotals();
-                
-                alert("2人分のデータの取り込みに成功しました！");
-                textArea.value = "";
-                showPage('home'); 
-            } else {
-                alert("データの形式が間違っています。");
-            }
-        } catch (e) {
-            alert("エラー：うまく読み込めませんでした。文字を全部コピーできているか確認してください。");
-        }
-    }
-}
