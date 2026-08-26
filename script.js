@@ -174,13 +174,25 @@ function loadUserData() {
 }
 
 function saveTasksData() {
-    if (!firebaseReady) return;
-    db.ref(currentUser + '/tasks').set(tasks);
+    if (!firebaseReady) {
+        alert("⚠️ クラウドに接続できていません。保存できませんでした。\n（画面上部の同期状態を確認してください）");
+        return;
+    }
+    db.ref(currentUser + '/tasks').set(tasks).catch((e) => {
+        console.error('保存エラー:', e);
+        alert("⚠️ 保存に失敗しました：" + e.message + "\n（Firebaseのルール設定を確認してください）");
+    });
 }
 
 function saveRecordsData() {
-    if (!firebaseReady) return;
-    db.ref(currentUser + '/records').set(records);
+    if (!firebaseReady) {
+        alert("⚠️ クラウドに接続できていません。保存できませんでした。\n（画面上部の同期状態を確認してください）");
+        return;
+    }
+    db.ref(currentUser + '/records').set(records).catch((e) => {
+        console.error('保存エラー:', e);
+        alert("⚠️ 保存に失敗しました：" + e.message + "\n（Firebaseのルール設定を確認してください）");
+    });
 }
 
 function switchUser(userId) {
