@@ -408,14 +408,16 @@ function loadTodayRecord() {
         }
 
         let triangleDisabled = task.allowTriangle ? "" : "disabled";
+        let fullPrevChecked = status === 'full' ? 'true' : 'false';
+        let trianglePrevChecked = status === 'triangle' ? 'true' : 'false';
 
         tr.innerHTML = `
             <td>${task.name} <br><small>(${task.reward}円)</small></td>
             <td>
-                <input type="radio" name="status_${task.id}" value="full" ${status === 'full' ? 'checked' : ''} style="transform: scale(1.5);">
+                <input type="radio" name="status_${task.id}" value="full" ${status === 'full' ? 'checked' : ''} data-prev-checked="${fullPrevChecked}" onclick="toggleStatus(this)" style="transform: scale(1.5);">
             </td>
             <td>
-                <input type="radio" name="status_${task.id}" value="triangle" ${status === 'triangle' ? 'checked' : ''} ${triangleDisabled} style="transform: scale(1.5);">
+                <input type="radio" name="status_${task.id}" value="triangle" ${status === 'triangle' ? 'checked' : ''} ${triangleDisabled} data-prev-checked="${trianglePrevChecked}" onclick="toggleStatus(this)" style="transform: scale(1.5);">
             </td>
             <td>
                 <select id="count_${task.id}" style="width: auto; padding: 5px;">${options}</select>
@@ -423,6 +425,23 @@ function loadTodayRecord() {
             <input type="radio" name="status_${task.id}" value="none" style="display:none;" ${status === 'none' ? 'checked' : ''}>
         `;
         tbody.appendChild(tr);
+    });
+}
+
+// 押した✔/△をもう一度押すと「未選択」に戻す
+function toggleStatus(radio) {
+    let radios = document.getElementsByName(radio.name);
+
+    if (radio.dataset.prevChecked === 'true') {
+        // すでに選ばれていたものをもう一度押した → 取り消して未選択にする
+        let noneRadio = document.querySelector(`input[name="${radio.name}"][value="none"]`);
+        if (noneRadio) noneRadio.checked = true;
+        radio.checked = false;
+    }
+
+    // 状態を記録し直す（次回クリック時の判定用）
+    radios.forEach((r) => {
+        r.dataset.prevChecked = r.checked ? 'true' : 'false';
     });
 }
 
