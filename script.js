@@ -11,6 +11,17 @@ let db;
 let tasksRef = null;
 let recordsRef = null;
 let firebaseReady = false;
+let authReady = false; // 匿名ログインが完了したか
+
+// 画面に表示する文字を安全にする（HTMLとして解釈されないようにする）
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 window.onload = function() {
     let today = new Date();
@@ -19,8 +30,7 @@ window.onload = function() {
     let dd = String(today.getDate()).padStart(2, '0');
     document.getElementById('record-date').value = `${yyyy}-${mm}-${dd}`;
 
-    initFirebase();
-    migrateLocalStorageIfNeeded();
+    initFirebase(); // 匿名ログイン完了後に、引っ越し処理とデータ読み込みが始まります
 
     // 初期設定としてほのかちゃんのデータを読み込む
     switchUser('honoka');
@@ -122,6 +132,21 @@ function initFirebase() {
                 statusEl.style.color = 'red';
             }
         });
+
+        // 🔑 匿名ログイン（画面は出ません。裏側で自動的にログイン扱いになります）
+        firebase.auth().signInAnonymously()
+            .then(() => {
+                authReady = true;
+                migrateLocalStorageIfNeeded();
+                loadUserData();
+            })
+            .catch((e) => {
+                console.error('匿名ログインエラー:', e);
+                if (statusEl) {
+                    statusEl.innerText = '⚠️ ログインに失敗しました（Firebaseの「匿名」ログインが有効か確認してください）';
+                    statusEl.style.color = 'red';
+                }
+            });
     } catch (e) {
         firebaseReady = false;
         if (statusEl) {
@@ -144,8 +169,8 @@ function loadUserData() {
     tasks = [];
     records = {};
 
-    if (!firebaseReady) {
-        return;
+    if (!firebaseReady || !authReady) {
+        return; // 匿名ログインが終わったら、自動でもう一度呼ばれます
     }
 
     tasksRef = db.ref(currentUser + '/tasks');
@@ -174,7 +199,7 @@ function loadUserData() {
 }
 
 function saveTasksData() {
-    if (!firebaseReady) {
+    if (!firebaseReady || !authReady) {
         alert("⚠️ クラウドに接続できていません。保存できませんでした。\n（画面上部の同期状態を確認してください）");
         return;
     }
@@ -185,7 +210,7 @@ function saveTasksData() {
 }
 
 function saveRecordsData() {
-    if (!firebaseReady) {
+    if (!firebaseReady || !authReady) {
         alert("⚠️ クラウドに接続できていません。保存できませんでした。\n（画面上部の同期状態を確認してください）");
         return;
     }
@@ -372,8 +397,8 @@ function updateTaskList() {
         let tr = document.createElement('tr');
         let triangleText = task.allowTriangle ? "〇 許可" : "× なし";
         tr.innerHTML = `
-            <td>${task.name}</td>
-            <td>${task.reward}円</td>
+            <td>${escapeHtml(task.name)}</td>
+            <td>${escapeHtml(task.reward)}円</td>
             <td>${triangleText}</td>
             <td><button class="btn-red" onclick="deleteTask(${task.id})" style="padding: 5px 10px; margin: 0;">消す</button></td>
         `;
@@ -412,7 +437,7 @@ function loadTodayRecord() {
         let trianglePrevChecked = status === 'triangle' ? 'true' : 'false';
 
         tr.innerHTML = `
-            <td>${task.name} <br><small>(${task.reward}円)</small></td>
+            <td>${escapeHtml(task.name)} <br><small>(${escapeHtml(task.reward)}円)</small></td>
             <td>
                 <input type="radio" name="status_${task.id}" value="full" ${status === 'full' ? 'checked' : ''} data-prev-checked="${fullPrevChecked}" onclick="toggleStatus(this)" style="transform: scale(1.5);">
             </td>
