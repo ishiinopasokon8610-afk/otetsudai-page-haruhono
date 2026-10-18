@@ -23,6 +23,15 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+// その記録1件ぶんの金額（1回あたり）を返す
+// 記録に「その時の金額(reward)」が保存されていればそれを使うので、
+// あとでお手伝いの金額を変えても、過去の記録の金額は変わりません。
+function getRecordMoney(rec, task) {
+    let money = (rec.reward !== undefined && rec.reward !== null) ? rec.reward : task.reward;
+    if (rec.status === 'triangle') money = Math.floor(money / 2);
+    return money;
+}
+
 window.onload = function() {
     let today = new Date();
     let yyyy = today.getFullYear();
@@ -299,9 +308,7 @@ function drawCalendar() {
             records[dateStr].forEach(rec => {
                 let task = tasks.find(t => t.id === rec.taskId);
                 if (task) {
-                    let money = task.reward;
-                    if (rec.status === 'triangle') money = Math.floor(money / 2);
-                    dayTotal += money * rec.count;
+                    dayTotal += getRecordMoney(rec, task) * rec.count;
                 }
             });
         }
@@ -389,19 +396,104 @@ function deleteTask(id) {
     }
 }
 
+// 今、表の中で編集しているお手伝いのid（なければ null）
+let editingTaskId = null;
+
+// 「変更」ボタン：その行を編集モードにする
+function startEditTask(id) {
+    editingTaskId = id;
+    updateTaskList();
+}
+
+function cancelEditTask() {
+    editingTaskId = null;
+    updateTaskList();
+}
+
+// お手伝いの名前・金額・△マークをあとから変更して保存する
+// ・金額を変えた場合、今日以降の記録には新しい金額が使われます
+// ・すでに保存した過去の記録は、その時の金額のまま変わりません
+function saveEditTask(id) {
+    let task = tasks.find(t => t.id === id);
+    if (!task) return;
+
+    let newName = document.getElementById('edit-name').value.trim();
+    let newReward = parseInt(document.getElementById('edit-reward').value, 10);
+    let newTriangle = document.getElementById('edit-triangle').checked;
+
+    if (newName === "" || isNaN(newReward) || newReward < 0) {
+        alert("お手伝いの名前と、0以上の金額を正しく入力してください！");
+        return;
+    }
+
+    if (!firebaseReady || !authReady) {
+        alert("⚠️ クラウドに接続できていません。変更できませんでした。\n（画面上部の同期状態を確認してください）");
+        return;
+    }
+
+    let oldReward = task.reward;
+
+    // 金額が変わる場合：過去の記録に「その時の金額」をまだ持っていないものがあれば、
+    // 変更前の金額を書き込んで固定する
+    if (newReward !== oldReward) {
+        for (let date in records) {
+            records[date].forEach((rec) => {
+                if (rec.taskId === id && (rec.reward === undefined || rec.reward === null)) {
+                    rec.reward = oldReward;
+                }
+            });
+        }
+    }
+
+    task.name = newName;
+    task.reward = newReward;
+    task.allowTriangle = newTriangle;
+
+    // お手伝いと記録を同時に（途中で片方だけにならないように）保存する
+    db.ref(currentUser).update({
+        tasks: tasks,
+        records: records
+    }).catch((e) => {
+        console.error('保存エラー:', e);
+        alert("⚠️ 保存に失敗しました：" + e.message + "\n（Firebaseのルール設定を確認してください）");
+    });
+
+    editingTaskId = null;
+    updateTaskList();
+    loadTodayRecord();
+    updateSidebarMonthTotals();
+}
+
 function updateTaskList() {
     let tbody = document.getElementById('task-list-tbody');
-    tbody.innerHTML = ""; 
+    tbody.innerHTML = "";
 
     tasks.forEach(task => {
         let tr = document.createElement('tr');
-        let triangleText = task.allowTriangle ? "〇 許可" : "× なし";
-        tr.innerHTML = `
-            <td>${escapeHtml(task.name)}</td>
-            <td>${escapeHtml(task.reward)}円</td>
-            <td>${triangleText}</td>
-            <td><button class="btn-red" onclick="deleteTask(${task.id})" style="padding: 5px 10px; margin: 0;">消す</button></td>
-        `;
+
+        if (task.id === editingTaskId) {
+            // ✏️ 編集モードの行
+            tr.innerHTML = `
+                <td><input type="text" id="edit-name" value="${escapeHtml(task.name)}" style="width: 95%;"></td>
+                <td><input type="number" id="edit-reward" value="${escapeHtml(task.reward)}" style="width: 80px;">円</td>
+                <td><input type="checkbox" id="edit-triangle" ${task.allowTriangle ? 'checked' : ''} style="transform: scale(1.5);"></td>
+                <td>
+                    <button onclick="saveEditTask(${task.id})" style="padding: 5px 10px; margin: 0 4px 0 0;">保存</button>
+                    <button class="btn-blue" onclick="cancelEditTask()" style="padding: 5px 10px; margin: 0;">やめる</button>
+                </td>
+            `;
+        } else {
+            let triangleText = task.allowTriangle ? "〇 許可" : "× なし";
+            tr.innerHTML = `
+                <td>${escapeHtml(task.name)}</td>
+                <td>${escapeHtml(task.reward)}円</td>
+                <td>${triangleText}</td>
+                <td>
+                    <button class="btn-blue" onclick="startEditTask(${task.id})" style="padding: 5px 10px; margin: 0 4px 0 0;">変更</button>
+                    <button class="btn-red" onclick="deleteTask(${task.id})" style="padding: 5px 10px; margin: 0;">消す</button>
+                </td>
+            `;
+        }
         tbody.appendChild(tr);
     });
 }
@@ -490,10 +582,16 @@ function saveTodayRecord() {
 
         if (selectedStatus === 'full' || selectedStatus === 'triangle') {
             let countVal = document.getElementById(`count_${task.id}`).value;
+            // すでに同じ日の記録があれば、その時の金額を引き継ぐ（なければ今の金額）
+            let existing = (records[selectedDate] || []).find(r => r.taskId === task.id);
+            let rewardAtThatTime = (existing && existing.reward !== undefined && existing.reward !== null)
+                ? existing.reward
+                : task.reward;
             todayRecords.push({
                 taskId: task.id,
                 status: selectedStatus,
-                count: parseInt(countVal)
+                count: parseInt(countVal),
+                reward: rewardAtThatTime
             });
         }
     });
@@ -522,9 +620,7 @@ function updateSidebarMonthTotals() {
         dayRecords.forEach(rec => {
             let task = tasks.find(t => t.id === rec.taskId);
             if (task) {
-                let money = task.reward;
-                if (rec.status === 'triangle') money = Math.floor(money / 2); 
-                monthlyTotals[yyyy_mm] += money * rec.count;
+                monthlyTotals[yyyy_mm] += getRecordMoney(rec, task) * rec.count;
             }
         });
     }
