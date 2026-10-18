@@ -474,8 +474,8 @@ function updateTaskList() {
         if (task.id === editingTaskId) {
             // ✏️ 編集モードの行
             tr.innerHTML = `
-                <td><input type="text" id="edit-name" value="${escapeHtml(task.name)}" style="width: 95%;"></td>
-                <td><input type="number" id="edit-reward" value="${escapeHtml(task.reward)}" style="width: 80px;">円</td>
+                <td><input type="text" id="edit-name" value="${escapeHtml(task.name)}" style="width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px;"></td>
+                <td style="white-space: nowrap;"><input type="number" id="edit-reward" value="${escapeHtml(task.reward)}" inputmode="numeric" style="width: 64px; min-width: 0; box-sizing: border-box; font-size: 16px;">円</td>
                 <td><input type="checkbox" id="edit-triangle" ${task.allowTriangle ? 'checked' : ''} style="transform: scale(1.5);"></td>
                 <td>
                     <button onclick="saveEditTask(${task.id})" style="padding: 5px 10px; margin: 0 4px 0 0;">保存</button>
