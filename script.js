@@ -24,10 +24,11 @@ function escapeHtml(value) {
 }
 
 // その記録1件ぶんの金額（1回あたり）を返す
-// 記録に「その時の金額(reward)」が保存されていればそれを使うので、
-// あとでお手伝いの金額を変えても、過去の記録の金額は変わりません。
+// いつでも「今のお手伝いの金額」を使うので、
+// 金額を変えると、過去の記録の合計もすべて新しい金額で計算し直されます。
+// （Firebase上の記録の reward も、下の syncRecordRewards で同じ金額にそろえます）
 function getRecordMoney(rec, task) {
-    let money = (rec.reward !== undefined && rec.reward !== null) ? rec.reward : task.reward;
+    let money = task.reward;
     if (rec.status === 'triangle') money = Math.floor(money / 2);
     return money;
 }
@@ -194,6 +195,7 @@ function loadUserData() {
         if (document.getElementById('page-calendar').classList.contains('active-page')) {
             drawCalendar();
         }
+        syncRecordRewards();
     });
 
     // 記録をリアルタイムで監視
@@ -204,7 +206,33 @@ function loadUserData() {
         if (document.getElementById('page-calendar').classList.contains('active-page')) {
             drawCalendar();
         }
+        syncRecordRewards();
     });
+}
+
+// Firebaseに保存されている各記録の金額(reward)を、今のお手伝いの金額にそろえる
+// ・金額がずれている記録だけをクラウドに書き込みます（そろっていれば何もしません）
+// ・昔の「その時の金額」が残っている記録も、これで新しい金額に直ります
+function syncRecordRewards() {
+    if (!firebaseReady || !authReady) return;
+
+    let userId = currentUser;
+    let updates = {};
+    for (let date in records) {
+        if (!Array.isArray(records[date])) continue;
+        records[date].forEach((rec, i) => {
+            let task = tasks.find(t => t.id === rec.taskId);
+            if (task && rec.reward !== task.reward) {
+                updates[userId + '/records/' + date + '/' + i + '/reward'] = task.reward;
+            }
+        });
+    }
+
+    if (Object.keys(updates).length > 0) {
+        db.ref().update(updates).catch((e) => {
+            console.error('記録の金額の更新エラー:', e);
+        });
+    }
 }
 
 function saveTasksData() {
@@ -411,8 +439,7 @@ function cancelEditTask() {
 }
 
 // お手伝いの名前・金額・△マークをあとから変更して保存する
-// ・金額を変えた場合、今日以降の記録には新しい金額が使われます
-// ・すでに保存した過去の記録は、その時の金額のまま変わりません
+// ・金額を変えると、過去の記録も含めて、Firebase上の金額もすべて新しい金額に書き換わります
 function saveEditTask(id) {
     let task = tasks.find(t => t.id === id);
     if (!task) return;
@@ -431,23 +458,17 @@ function saveEditTask(id) {
         return;
     }
 
-    let oldReward = task.reward;
-
-    // 金額が変わる場合：過去の記録に「その時の金額」をまだ持っていないものがあれば、
-    // 変更前の金額を書き込んで固定する
-    if (newReward !== oldReward) {
-        for (let date in records) {
-            records[date].forEach((rec) => {
-                if (rec.taskId === id && (rec.reward === undefined || rec.reward === null)) {
-                    rec.reward = oldReward;
-                }
-            });
-        }
-    }
-
     task.name = newName;
     task.reward = newReward;
     task.allowTriangle = newTriangle;
+
+    // このお手伝いの記録（過去ぶんすべて）の金額も、新しい金額に書き換える
+    for (let date in records) {
+        if (!Array.isArray(records[date])) continue;
+        records[date].forEach((rec) => {
+            if (rec.taskId === id) rec.reward = newReward;
+        });
+    }
 
     // お手伝いと記録を同時に（途中で片方だけにならないように）保存する
     db.ref(currentUser).update({
@@ -462,6 +483,9 @@ function saveEditTask(id) {
     updateTaskList();
     loadTodayRecord();
     updateSidebarMonthTotals();
+    if (document.getElementById('page-calendar').classList.contains('active-page')) {
+        drawCalendar();
+    }
 }
 
 function updateTaskList() {
@@ -582,16 +606,11 @@ function saveTodayRecord() {
 
         if (selectedStatus === 'full' || selectedStatus === 'triangle') {
             let countVal = document.getElementById(`count_${task.id}`).value;
-            // すでに同じ日の記録があれば、その時の金額を引き継ぐ（なければ今の金額）
-            let existing = (records[selectedDate] || []).find(r => r.taskId === task.id);
-            let rewardAtThatTime = (existing && existing.reward !== undefined && existing.reward !== null)
-                ? existing.reward
-                : task.reward;
             todayRecords.push({
                 taskId: task.id,
                 status: selectedStatus,
                 count: parseInt(countVal),
-                reward: rewardAtThatTime
+                reward: task.reward
             });
         }
     });
